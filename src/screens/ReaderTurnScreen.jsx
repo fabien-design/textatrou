@@ -23,7 +23,7 @@ export default function ReaderTurnScreen({ reader, mode = 'joueur', onReady }) {
   };
   if (mode === 'voix') {
     return (
-      <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-hidden">
+      <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-clip">
         <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center">
           <div className="text-8xl" aria-hidden="true">📱</div>
           <h1 className="font-display text-3xl font-bold text-ink">Posez le téléphone au centre</h1>
@@ -34,7 +34,7 @@ export default function ReaderTurnScreen({ reader, mode = 'joueur', onReady }) {
     );
   }
   return (
-    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-hidden">
+    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-clip">
       <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center">
         <h1 className="font-display text-2xl text-ink">📖 À TOI DE LIRE</h1>
         <div

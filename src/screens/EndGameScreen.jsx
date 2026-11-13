@@ -104,7 +104,7 @@ export default function EndGameScreen({ story, answers, themes = [], onNextTheme
   });
 
   return (
-    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-hidden">
+    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-clip">
       <div className="text-center">
         <h1 className="font-display text-3xl text-ink">🎉 HISTOIRE TERMINÉE !</h1>
         <p className="font-display text-xl text-ink mt-1">{story.titre}</p>

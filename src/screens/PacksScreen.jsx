@@ -11,7 +11,7 @@ export default function PacksScreen({ packs, unlocked, counts, selected, onSelec
     else onSelect(pack.id);
   };
   return (
-    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-hidden">
+    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-clip">
       <div className="flex items-center gap-3">
         <Button variant="white" className="px-3 py-2 text-sm" onClick={onClose}>‹ Retour</Button>
         <h1 className="font-display text-2xl font-bold text-ink">PACKS & THÈMES</h1>
