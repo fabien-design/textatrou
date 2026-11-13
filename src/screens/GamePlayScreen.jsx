@@ -128,12 +128,6 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
     setTimeLeft(TIMER_START);
   };
 
-  const sentenceWith = (w) => {
-    const t = segments[k].texte_avant || '';
-    const parts = t.split(/(?<=[.!?…])\s+/).filter((x) => /[\p{L}\p{N}]/u.test(x));
-    return `${parts.length ? parts[parts.length - 1].trim() : t} ${w}`;
-  };
-
   const clearTimer = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = null;
@@ -172,10 +166,6 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
       clearTimer();
       setHeard(w);
       setPhase('heard');
-      if (voice) {
-        await safeSpeak(sentenceWith(w), tok);
-        if (tok !== tokenRef.current) return;
-      }
       validate({ word: w, joker: false });
     } else {
       setPhase('noword');
@@ -198,7 +188,6 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
     if (voice) {
       const phrase = JOKER_PHRASES[Math.floor(Math.random() * JOKER_PHRASES.length)].replace('W', w);
       await safeSpeak(phrase, tok);
-      await safeSpeak(sentenceWith(w), tok);
     } else {
       await sleep(700);
     }
