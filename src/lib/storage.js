@@ -3,6 +3,7 @@ const KEYS = {
   options: 'textatrou:options',
   packs: 'textatrou:packs',
   age: 'textatrou:age',
+  voices: 'textatrou:voices',
 };
 
 function read(key, fallback) {
@@ -35,7 +36,7 @@ export function savePlayers(arr) {
 export function loadOptions() {
   const stored = read(KEYS.options, {});
   const obj = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
-  return { designationAuto: true, timerPression: false, ...obj };
+  return { designationAuto: true, timerPression: false, readerMode: 'voix', voiceId: 'narrateur', ...obj };
 }
 
 export function saveOptions(partial) {
@@ -61,4 +62,20 @@ export function loadAgeConfirmed() {
 
 export function saveAgeConfirmed(bool) {
   write(KEYS.age, bool);
+}
+
+const PAID_VOICES = ['robot', 'ecureuil', 'mamie', 'commentateur'];
+
+export function loadUnlockedVoices() {
+  const v = read(KEYS.voices, []);
+  const arr = Array.isArray(v) ? v.filter((x) => typeof x === 'string') : [];
+  return ['narrateur', ...arr].filter((x, i, a) => a.indexOf(x) === i);
+}
+
+export function unlockVoice(id) {
+  const next = loadUnlockedVoices();
+  const add = id === 'bundle' ? PAID_VOICES : [id];
+  for (const x of add) if (!next.includes(x)) next.push(x);
+  write(KEYS.voices, next);
+  return next;
 }
