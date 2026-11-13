@@ -13,6 +13,17 @@ export default defineConfig(({ mode }) => ({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icon.svg'],
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
+        globIgnores: ['**/*.wasm'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => /\.wasm$/.test(url.pathname) || /huggingface\.co/.test(url.hostname),
+            handler: 'CacheFirst',
+            options: { cacheName: 'textatrou-voices', cacheableResponse: { statuses: [0, 200] } },
+          },
+        ],
+      },
       manifest: {
         name: 'TEXTATROU',
         short_name: 'TEXTATROU',
