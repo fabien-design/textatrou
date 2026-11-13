@@ -1,38 +1,59 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button, Card } from '../components/ui/index.js';
-import {
-  playPop,
-  playJoker,
-  playBadumTss,
-  playScream,
-  playApplause,
-  playBeep,
-} from '../lib/audio.js';
+import { playPop, playJoker, playBeep } from '../lib/audio.js';
 import { requestWakeLock } from '../lib/device.js';
+import { speak, cancelSpeech, listen, stopListening, isSttSupported } from '../lib/speech.js';
 import { pickResponder, pickJoker, fakeText } from '../game/engine.js';
 
 const TIMER_START = 15;
+const PUNCT = /^\s*[,.…)\]»]/;
+const JOKER_PHRASES = [
+  'Bon… ce sera : W !',
+  'Trop lent ! Allez hop : W !',
+  'Le destin a choisi : W !',
+  'Silence radio ? Alors ce sera W !',
+];
+
+const css = `
+@keyframes hole-glow {
+  0%, 100% { box-shadow: 4px 4px 0 0 #1a1a1a, 0 0 0 0 rgba(255,107,107,0.7); transform: scale(1); }
+  50% { box-shadow: 4px 4px 0 0 #1a1a1a, 0 0 0 10px rgba(255,107,107,0); transform: scale(1.02); }
+}
+@keyframes mic-bounce { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.35); } }
+.hole-glow { animation: hole-glow 1.6s ease-in-out infinite; }
+.mic-bounce { display: inline-block; animation: mic-bounce 0.9s ease-in-out infinite; }
+`;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const splitSentences = (t) => (t || '').match(/[^.!?…]+[.!?…]*\s*/g) || [];
 
 export default function GamePlayScreen({ story, players, reader, options = {}, jokers, onFinish }) {
   const segments = story.segments;
   const holes = segments.filter((s) => s.trou).length;
   const finText = segments.find((s) => s.texte_fin !== undefined)?.texte_fin ?? '';
+  const voice = options.readerMode === 'voix';
+  const rd = voice ? null : reader;
 
   const [k, setK] = useState(0);
   const [answers, setAnswers] = useState([]);
   const [responders, setResponders] = useState(() => {
     if (!options.designationAuto || holes === 0) return [null];
-    return [pickResponder(players, reader, null)];
+    return [pickResponder(players, rd, null)];
   });
-  const [editing, setEditing] = useState(false);
-  const [word, setWord] = useState('');
+  const [phase, setPhase] = useState('idle'); // idle | listening | heard | noword | joker
+  const [heard, setHeard] = useState(null);
   const [jokerWord, setJokerWord] = useState(null);
+  const [hl, setHl] = useState(-1);
+  const [help, setHelp] = useState(false);
   const [timeLeft, setTimeLeft] = useState(TIMER_START);
   const activeRef = useRef(null);
   const firstRender = useRef(true);
+  const tokenRef = useRef(0);
+  const timerRef = useRef(null);
+  const live = useRef({});
 
   const finished = k >= holes;
-  const seg = segments[k];
+  live.current = { k, responders, options, voice, segments, jokers };
 
   // wake lock
   useEffect(() => {
@@ -49,7 +70,18 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
     };
   }, []);
 
-  // scroll to new active element
+  // unmount cleanup
+  useEffect(
+    () => () => {
+      tokenRef.current += 1;
+      clearTimer();
+      cancelSpeech();
+      stopListening();
+    },
+    []
+  );
+
+  // scroll
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false;
@@ -61,64 +93,170 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
     }
   }, [k]);
 
-  const injectJoker = useCallback(() => {
-    const s = segments[k];
-    if (!s || !s.trou) return;
-    setEditing(false);
-    setJokerWord(pickJoker(jokers, s.trou.categorie_joker));
-  }, [segments, k, jokers]);
-
-  const onJokerClick = () => {
-    if (finished) return;
-    playJoker();
-    injectJoker();
+  const safeSpeak = async (text, tok) => {
+    if (tok !== tokenRef.current) return;
+    try {
+      await speak(text, { voiceId: options.voiceId });
+    } catch (e) {
+      /* ignore */
+    }
   };
 
-  // timer
-  useEffect(() => {
-    if (!options.timerPression || finished || jokerWord !== null) return undefined;
-    const id = setInterval(() => {
-      setTimeLeft((t) => (t > 0 ? t - 1 : 0));
-    }, 1000);
-    return () => clearInterval(id);
-  }, [options.timerPression, finished, jokerWord, k]);
-
-  useEffect(() => {
-    if (!options.timerPression || finished || jokerWord !== null) return;
-    if (timeLeft <= 3) playBeep();
-    if (timeLeft === 0) {
-      playJoker();
-      injectJoker();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeLeft]);
-
   const validate = (answer) => {
+    tokenRef.current += 1;
+    clearTimer();
     playPop();
     const next = k + 1;
     setAnswers((a) => [...a, answer]);
     setResponders((r) => {
       const copy = [...r];
-      if (options.designationAuto && next < holes) {
-        copy[next] = pickResponder(players, reader, r[k] ?? null);
-      } else copy[next] = null;
+      copy[next] =
+        options.designationAuto && next < holes ? pickResponder(players, rd, r[k] ?? null) : null;
       return copy;
     });
     setK(next);
-    setEditing(false);
-    setWord('');
+    setPhase('idle');
+    setHeard(null);
     setJokerWord(null);
+    setHl(-1);
+    setHelp(false);
     setTimeLeft(TIMER_START);
   };
 
-  const onCardClick = () => {
-    if (jokerWord !== null) validate({ word: jokerWord, joker: true });
-    else if (!editing) setEditing(true);
+  const sentenceWith = (w) => {
+    const t = segments[k].texte_avant || '';
+    const parts = t.split(/(?<=[.!?…])\s+/).filter((x) => /[\p{L}\p{N}]/u.test(x));
+    return `${parts.length ? parts[parts.length - 1].trim() : t} ${w}`;
   };
 
-  const submitWord = () => validate({ word: word.trim(), joker: false });
+  const clearTimer = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = null;
+  };
 
-  const stop = (e) => e.stopPropagation();
+  const listenStep = async (tok) => {
+    setPhase('listening');
+    setHelp(false);
+    if (options.timerPression && !timerRef.current) {
+      let left = TIMER_START;
+      setTimeLeft(left);
+      timerRef.current = setInterval(() => {
+        left -= 1;
+        setTimeLeft(left);
+        if (left <= 3) playBeep();
+        if (left <= 0) {
+          clearTimer();
+          stopListening();
+          doJoker();
+        }
+      }, 1000);
+    }
+    let w = null;
+    for (;;) {
+      try {
+        w = await listen({ timeoutMs: options.timerPression ? 15000 : 8000 });
+      } catch (e) {
+        w = null;
+      }
+      if (tok !== tokenRef.current) return;
+      if (w || !options.timerPression) break;
+      await sleep(250);
+      if (tok !== tokenRef.current) return;
+    }
+    if (w) {
+      clearTimer();
+      setHeard(w);
+      setPhase('heard');
+      if (voice) {
+        await safeSpeak(sentenceWith(w), tok);
+        if (tok !== tokenRef.current) return;
+      }
+      validate({ word: w, joker: false });
+    } else {
+      setPhase('noword');
+    }
+  };
+
+  const doJoker = async () => {
+    if (finished) return;
+    const tok = ++tokenRef.current;
+    clearTimer();
+    stopListening();
+    cancelSpeech();
+    playJoker();
+    const w = pickJoker(jokers, segments[k].trou.categorie_joker);
+    setJokerWord(w);
+    setPhase('joker');
+    setHl(-1);
+    if (voice) {
+      const phrase = JOKER_PHRASES[Math.floor(Math.random() * JOKER_PHRASES.length)].replace('W', w);
+      await safeSpeak(phrase, tok);
+      await safeSpeak(sentenceWith(w), tok);
+    } else {
+      await sleep(700);
+    }
+    if (tok !== tokenRef.current) return;
+    validate({ word: w, joker: true });
+  };
+
+  const doSkip = () => {
+    stopListening();
+    cancelSpeech();
+    validate({ word: '', joker: false });
+  };
+
+  const doRetry = () => {
+    stopListening();
+    listenStep(++tokenRef.current);
+  };
+
+  // voice flow per hole
+  useEffect(() => {
+    if (!voice) return undefined;
+    const tok = ++tokenRef.current;
+    (async () => {
+      if (finished) {
+        await safeSpeak(finText, tok);
+        return;
+      }
+      const s = segments[k];
+      const sentences = splitSentences(s.texte_avant);
+      for (let i = 0; i < sentences.length; i++) {
+        if (!/[\p{L}\p{N}]/u.test(sentences[i])) continue;
+        if (tok !== tokenRef.current) return;
+        setHl(i);
+        await safeSpeak(sentences[i].trim(), tok);
+      }
+      if (tok !== tokenRef.current) return;
+      setHl(-1);
+      const name = live.current.responders[k];
+      const ann =
+        options.designationAuto && name
+          ? `${s.trou.consigne} ! C'est à ${name} !`
+          : `${s.trou.consigne} !`;
+      await safeSpeak(ann, tok);
+      if (tok !== tokenRef.current) return;
+      await listenStep(tok);
+    })();
+    return () => {
+      tokenRef.current += 1;
+      clearTimer();
+      cancelSpeech();
+      stopListening();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [k, voice]);
+
+  const onCardClick = () => {
+    if (finished) return;
+    if (jokerWord !== null) {
+      validate({ word: jokerWord, joker: true });
+      return;
+    }
+    if (voice || phase === 'listening' || phase === 'heard') return;
+    if (isSttSupported()) listenStep(++tokenRef.current);
+    else setHelp(true);
+  };
 
   const fakes = useMemo(() => {
     const m = {};
@@ -141,16 +279,21 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
     </span>
   );
 
+  const after = (i, t) => (i > 0 && segments[i - 1].trou && PUNCT.test(t) ? t.replace(/^\s+/, '') : t);
+
   const renderSegment = (s, i) => {
     if (s.texte_fin !== undefined) {
-      if (finished) return <span key={`f${i}`}>{s.texte_fin} </span>;
+      if (finished) return <span key={`f${i}`}>{after(i, s.texte_fin)} </span>;
       return <React.Fragment key={`f${i}`}>{locked(i)}</React.Fragment>;
     }
+    const text = after(i, s.texte_avant);
     if (i < k) {
       const a = answers[i] || { word: '', joker: false };
+      const nxt = segments[i + 1];
+      const nt = nxt ? nxt.texte_avant ?? nxt.texte_fin ?? '' : '';
       return (
         <React.Fragment key={i}>
-          <span>{s.texte_avant} </span>
+          <span>{text} </span>
           <span
             data-testid="answer-pill"
             data-joker={a.joker ? 'true' : undefined}
@@ -159,15 +302,28 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
             }`}
           >
             {a.word ? a.word : `✓ ${s.trou.consigne}`}
-          </span>{' '}
+          </span>
+          {PUNCT.test(nt) ? '' : ' '}
         </React.Fragment>
       );
     }
     if (i === k) {
       const isJ = jokerWord !== null;
+      const name = responders[k];
+      const sentences = voice && hl >= 0 ? splitSentences(text) : null;
       return (
         <React.Fragment key={i}>
-          <span>{s.texte_avant} </span>
+          {sentences ? (
+            <span>
+              {sentences.map((x, j) => (
+                <span key={j} className={j === hl ? 'bg-sun/40 rounded' : ''}>
+                  {x}
+                </span>
+              ))}{' '}
+            </span>
+          ) : (
+            <span>{text} </span>
+          )}
           <div
             ref={activeRef}
             data-testid="hole-card"
@@ -184,12 +340,18 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
             }}
             className={`${
               isJ ? 'bg-grape text-white' : 'bg-coral text-ink'
-            } border-2 border-ink shadow-brutal rounded-2xl p-4 my-3 font-display animate-pulse cursor-pointer`}
+            } hole-glow border-2 border-ink shadow-brutal rounded-2xl p-4 my-3 font-display cursor-pointer`}
           >
-            <div className="text-2xl font-bold uppercase">🎯 {s.trou.consigne}</div>
-            {options.designationAuto && responders[k] && (
-              <div className="mt-1 text-lg">👉 C'est à {responders[k]} !</div>
+            <div className="text-3xl font-bold uppercase">🎯 {s.trou.consigne}</div>
+            {options.designationAuto && name && (
+              <div className="mt-1 text-xl">👉 C'est à {name} !</div>
             )}
+            {phase === 'listening' && !isJ && (
+              <div className="mt-2 text-lg font-bold">
+                <span className="mic-bounce">🎤</span> J'écoute…
+              </div>
+            )}
+            {heard && !isJ && <div className="mt-2 text-4xl font-bold">{heard}</div>}
             {options.timerPression && (
               <div
                 data-testid="timer"
@@ -200,48 +362,8 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
             )}
             {isJ && (
               <div className="mt-2">
-                <div className="text-3xl font-bold">🎲 {jokerWord}</div>
-                <div className="text-sm">Tape pour valider</div>
-              </div>
-            )}
-            {editing && !isJ && (
-              <div className="mt-3 flex flex-wrap items-center gap-2" onClick={stop}>
-                <input
-                  aria-label="Mot dit"
-                  autoFocus
-                  value={word}
-                  placeholder="Le mot crié (optionnel)"
-                  onChange={(e) => setWord(e.target.value)}
-                  onKeyDown={(e) => {
-                    e.stopPropagation();
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      submitWord();
-                    }
-                  }}
-                  className="min-w-0 flex-1 rounded-xl border-2 border-ink bg-white px-3 py-2 text-ink font-body"
-                />
-                <button
-                  type="button"
-                  aria-label="Valider"
-                  onClick={(e) => {
-                    stop(e);
-                    submitWord();
-                  }}
-                  className="rounded-xl border-2 border-ink bg-mint px-3 py-2 shadow-brutal text-ink font-bold"
-                >
-                  ✓
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    stop(e);
-                    validate({ word: '', joker: false });
-                  }}
-                  className="rounded-xl border-2 border-ink bg-white px-3 py-2 text-ink font-bold"
-                >
-                  Passer
-                </button>
+                <div className="text-4xl font-bold">🎲 {jokerWord}</div>
+                {!voice && <div className="text-sm">Tape pour valider</div>}
               </div>
             )}
           </div>
@@ -259,30 +381,22 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
     );
   };
 
-  const sound = (label, emoji, fn) => (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={fn}
-      className="h-10 w-10 bg-white border-2 border-ink shadow-brutal rounded-xl text-xl"
-    >
-      {emoji}
-    </button>
-  );
+  const showRetry = phase === 'noword' && (voice || isSttSupported());
 
   return (
     <div className="min-h-screen bg-cream font-body text-ink flex flex-col max-w-md mx-auto">
+      <style>{css}</style>
       <header className="sticky top-0 z-10 bg-cream border-b-2 border-ink flex items-center justify-between px-4 py-2">
         <span className="rounded-full bg-cyan text-white px-3 py-1 font-display font-bold">
-          📖 {reader}
+          {voice ? '🎙️ Narrateur' : `📖 ${reader}`}
         </span>
-        <div className="flex gap-2">
-          {sound('Ba-dum Tss', '🥁', playBadumTss)}
-          {sound('Suspense', '😱', playScream)}
-          {sound('Applaudissements', '👏', playApplause)}
-        </div>
       </header>
       <main className="flex-1 p-4">
+        {help && (
+          <div role="alert" className="mb-3 rounded-xl border-2 border-ink bg-sun p-3 font-bold">
+            Micro indisponible : utilisez Joker ou Passer (autorisez le micro dans votre navigateur)
+          </div>
+        )}
         <Card className="font-body text-xl leading-relaxed">
           {segments.map(renderSegment)}
           {finished && (
@@ -294,13 +408,21 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
           )}
         </Card>
       </main>
-      <div className="sticky bottom-0 p-4 bg-cream">
-        {!finished && (
-          <Button variant="grape" className="w-full" onClick={onJokerClick}>
-            🎲 MOT JOKER (si ça sèche)
+      {!finished && (
+        <div className="sticky bottom-0 p-4 bg-cream flex flex-wrap gap-2">
+          {showRetry && (
+            <Button variant="primary" className="flex-1" onClick={doRetry}>
+              🎤 Réessayer
+            </Button>
+          )}
+          <Button variant="grape" className="flex-1" onClick={doJoker}>
+            🎲 Mot joker
           </Button>
-        )}
-      </div>
+          <Button variant="white" className="flex-1" onClick={doSkip}>
+            Passer
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
