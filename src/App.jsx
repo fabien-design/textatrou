@@ -5,11 +5,12 @@ import PacksScreen from './screens/PacksScreen.jsx';
 import ReaderTurnScreen from './screens/ReaderTurnScreen.jsx';
 import GamePlayScreen from './screens/GamePlayScreen.jsx';
 import EndGameScreen from './screens/EndGameScreen.jsx';
+import { VOICES, VOICE_BUNDLE, preloadVoice, speak, isVoiceReady } from './lib/speech.js';
 import { STORIES, JOKERS, PACKS, THEMES } from './data/stories.js';
 import { prepareStory, nextReader, pickStory, pickThemes, countStories } from './game/engine.js';
 import {
   loadPlayers, savePlayers, loadOptions, saveOptions,
-  loadUnlockedPacks, unlockPack, loadAgeConfirmed, saveAgeConfirmed,
+  loadUnlockedPacks, unlockPack, loadUnlockedVoices, unlockVoice, loadAgeConfirmed, saveAgeConfirmed,
 } from './lib/storage.js';
 
 export default function App() {
@@ -25,6 +26,16 @@ export default function App() {
   const [story, setStory] = useState(null);
   const [answers, setAnswers] = useState([]);
   const [themes, setThemes] = useState([]);
+  const [unlockedVoices, setUnlockedVoices] = useState(() => loadUnlockedVoices());
+  const [voiceProgress, setVoiceProgress] = useState(() => (isVoiceReady(options.voiceId) ? 1 : 0));
+
+  useEffect(() => {
+    if (screen !== 'lobby' || options.readerMode !== 'voix') return;
+    let alive = true;
+    setVoiceProgress(isVoiceReady(options.voiceId) ? 1 : 0);
+    Promise.resolve(preloadVoice(options.voiceId, (p) => alive && setVoiceProgress(p))).catch(() => {});
+    return () => { alive = false; };
+  }, [screen, options.readerMode, options.voiceId]);
 
   useEffect(() => {
     window.scrollTo?.(0, 0);
@@ -50,7 +61,8 @@ export default function App() {
   };
 
   const startStory = (filter) => {
-    const r = nextReader(players, reader);
+    const voice = options.readerMode === 'voix';
+    const r = voice ? null : reader ? nextReader(players, reader) : players[Math.floor(Math.random() * players.length)];
     const s = pickStory(STORIES, filter, playedIds) || pickStory(STORIES, { pack: 'gratuit' }, playedIds);
     if (!s) return;
     setPlayedIds([...playedIds, s.id]);
@@ -93,6 +105,9 @@ export default function App() {
         packName={packName}
         onOpenPacks={() => openPacks('lobby')}
         onBack={() => setScreen('home')}
+        voices={VOICES}
+        unlockedVoices={unlockedVoices}
+        voiceProgress={voiceProgress}
         onStart={() => startStory({ pack: effectivePack })}
       />
     );
@@ -114,10 +129,14 @@ export default function App() {
           setAgeConfirmed(true);
         }}
         onClose={() => setScreen(packsReturn)}
+        voices={VOICES}
+        unlockedVoices={unlockedVoices}
+        onUnlockVoice={(id) => setUnlockedVoices(unlockVoice(id))}
+        onPreviewVoice={(id) => speak("Salut ! C'est moi qui vais lire vos histoires absurdes.", { voiceId: id })}
       />
     );
   } else if (screen === 'readerTurn') {
-    content = <ReaderTurnScreen reader={reader} onReady={() => setScreen('play')} />;
+    content = <ReaderTurnScreen reader={reader} mode={options.readerMode} onReady={() => setScreen('play')} />;
   } else if (screen === 'play') {
     content = (
       <GamePlayScreen
@@ -135,6 +154,8 @@ export default function App() {
       <EndGameScreen
         story={story}
         answers={answers}
+        onAnswersChange={setAnswers}
+        voiceId={options.voiceId}
         themes={themes}
         onNextTheme={(id) => startStory({ thematique: id, packs: unlocked })}
         onLockedTheme={() => openPacks('end')}
