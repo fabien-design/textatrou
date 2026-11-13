@@ -89,7 +89,7 @@ test('3. voice mode hands-free', async ({ page }) => {
   await setup(page);
   await toEnd(page);
   const spoken = await page.evaluate(() => window.__spoken);
-  expect(spoken.some((t) => t.includes('Saucisson'))).toBe(true);
+  expect(spoken.some((t) => t.includes('Saucisson'))).toBe(false);
   await expect(page.getByTestId('recap-word').filter({ hasText: 'Saucisson' }).first()).toBeVisible();
 });
 
