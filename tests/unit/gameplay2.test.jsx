@@ -165,10 +165,11 @@ describe('voix mode', () => {
     expect(valid && noRepeat).toBe(true);
   });
 
-  test('after listen resolves, pill appears and sentence is re-read with the word', async () => {
+  test('after listen resolves, pill appears and sentence is NOT re-read; next segment follows', async () => {
     setup();
     await screen.findByTestId('answer-pill', {}, { timeout: 4000 });
-    await waitFor(() => expect(spokenTexts().some((x) => x.includes('banane'))).toBe(true), { timeout: 4000 });
+    await waitFor(() => expect(spokenTexts().some((x) => x.includes('PAPRIKA appelle'))).toBe(true), { timeout: 4000 });
+    expect(spokenTexts().some((x) => x.includes('banane'))).toBe(false);
   });
 
   test('flow continues automatically to next hole', async () => {
