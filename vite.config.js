@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { VitePWA } from 'vite-plugin-pwa';
+import { resolvePublicFile } from './scripts/public-raw.js';
 
 // Dev uniquement : sert /ort et /models bruts depuis public/ (Vite refuse d'importer des .mjs de public/).
 const servePublicRaw = () => ({
@@ -12,10 +13,8 @@ const servePublicRaw = () => ({
   configureServer(server) {
     const types = { '.mjs': 'application/javascript', '.js': 'application/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream' };
     server.middlewares.use((req, res, next) => {
-      const url = (req.url || '').split('?')[0];
-      if (!/^\/(ort|models|espeak)\//.test(url)) return next();
-      const file = path.join(server.config.publicDir, decodeURIComponent(url));
-      if (!file.startsWith(server.config.publicDir) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return next();
+      const file = resolvePublicFile(server.config.publicDir, req.url || '');
+      if (!file || !fs.existsSync(file) || !fs.statSync(file).isFile()) return next();
       res.setHeader('Content-Type', types[path.extname(file)] || 'application/octet-stream');
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
       fs.createReadStream(file).pipe(res);
