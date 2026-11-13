@@ -50,6 +50,8 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
   const firstRender = useRef(true);
   const tokenRef = useRef(0);
   const timerRef = useRef(null);
+  const jokerPendingRef = useRef(false);
+  const [jokerPending, setJokerPending] = useState(false);
   const live = useRef({});
 
   const finished = k >= holes;
@@ -73,6 +75,7 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
   // unmount cleanup
   useEffect(
     () => () => {
+      jokerPendingRef.current = false;
       tokenRef.current += 1;
       clearTimer();
       cancelSpeech();
@@ -103,6 +106,8 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
   };
 
   const validate = (answer) => {
+    jokerPendingRef.current = false;
+    setJokerPending(false);
     tokenRef.current += 1;
     clearTimer();
     playPop();
@@ -178,7 +183,9 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
   };
 
   const doJoker = async () => {
-    if (finished) return;
+    if (finished || jokerPendingRef.current) return;
+    jokerPendingRef.current = true;
+    setJokerPending(true);
     const tok = ++tokenRef.current;
     clearTimer();
     stopListening();
@@ -415,7 +422,12 @@ export default function GamePlayScreen({ story, players, reader, options = {}, j
               🎤 Réessayer
             </Button>
           )}
-          <Button variant="grape" className="flex-1" onClick={doJoker}>
+          <Button
+            variant="grape"
+            className={`flex-1 ${jokerPending ? 'opacity-50' : ''}`}
+            disabled={jokerPending}
+            onClick={doJoker}
+          >
             🎲 Mot joker
           </Button>
           <Button variant="white" className="flex-1" onClick={doSkip}>
