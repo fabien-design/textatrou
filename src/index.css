@@ -1,0 +1,31 @@
+@import "tailwindcss";
+
+@theme {
+  --color-cream: #FFFDF7;
+  --color-ink: #1A1A1A;
+  --color-sun: #FFD166;
+  --color-coral: #FF6B6B;
+  --color-mint: #06D6A0;
+  --color-cyan: #118AB2;
+  --color-grape: #9B5DE5;
+  --color-surface: #FFFFFF;
+  --font-display: "Fredoka", system-ui, sans-serif;
+  --font-body: "Plus Jakarta Sans", system-ui, sans-serif;
+  --shadow-brutal: 4px 4px 0px #1A1A1A;
+  --shadow-brutal-sm: 2px 2px 0px #1A1A1A;
+}
+
+html, body {
+  overflow-x: clip;
+}
+
+html {
+  overscroll-behavior-y: none;
+}
+
+body {
+  background-color: var(--color-cream);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  -webkit-tap-highlight-color: transparent;
+}
