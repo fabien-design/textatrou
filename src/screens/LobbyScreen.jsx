@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Card, Toggle } from '../components/ui/index.js';
+import { speak, setSpeechRate } from '../lib/speech.js';
 
 const COLORS = ['bg-sun', 'bg-coral', 'bg-mint', 'bg-cyan', 'bg-grape'];
 const label = 'font-display text-sm font-bold tracking-wide text-ink';
@@ -15,6 +16,35 @@ function ModeChoice({ value, onChange, name }) {
           <span>{text}</span>
         </label>
       ))}
+    </div>
+  );
+}
+
+export function VoiceSpeed({ options, onOptionsChange }) {
+  const cur = Number.isFinite(options.voiceSpeed) ? options.voiceSpeed : 1.2;
+  const set = (n) => {
+    const v = Math.min(1.8, Math.max(0.8, Math.round(n * 10) / 10));
+    onOptionsChange({ ...options, voiceSpeed: v });
+  };
+  const test = () => {
+    setSpeechRate(cur);
+    speak('Voilà ma nouvelle vitesse de lecture !', { voiceId: options.voiceId });
+  };
+  const btn = 'h-9 w-9 rounded-full border-2 border-ink bg-white font-display font-bold text-ink shadow-brutal';
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between font-display font-semibold text-ink">
+        <span>Vitesse de la voix</span>
+        <span>{`×${cur.toFixed(1)}`}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="button" aria-label="Ralentir la voix" className={btn} onClick={() => set(cur - 0.1)}>−</button>
+        <input type="range" aria-label="Vitesse de la voix" min="0.8" max="1.8" step="0.1" value={cur}
+          onChange={(e) => set(Number(e.target.value))}
+          className="h-3 flex-1 rounded-full border-2 border-ink" style={{ accentColor: '#FF6B6B' }} />
+        <button type="button" aria-label="Accélérer la voix" className={btn} onClick={() => set(cur + 0.1)}>+</button>
+        <button type="button" aria-label="Tester la vitesse" className={btn} onClick={test}>▶</button>
+      </div>
     </div>
   );
 }
@@ -76,6 +106,7 @@ export default function LobbyScreen({ voices = [], unlockedVoices = ['narrateur'
                 );
               })}
             </div>
+            <VoiceSpeed options={options} onOptionsChange={onOptionsChange} />
             {voiceProgress < 1 && (
               <div className="flex flex-col gap-1">
                 <div role="progressbar" aria-label="Téléchargement de la voix" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(voiceProgress * 100)} className="h-4 overflow-hidden rounded-full border-2 border-ink bg-white">
