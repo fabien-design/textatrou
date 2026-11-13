@@ -21,6 +21,15 @@ const active = new Set(); // pending speak states
 let recog = null;
 let recogDone = null;
 
+let speechRate = 1;
+export function setSpeechRate(x) {
+  if (typeof x !== 'number' || !Number.isFinite(x)) return;
+  speechRate = Math.min(2, Math.max(0.5, x));
+}
+export function getSpeechRate() {
+  return speechRate;
+}
+
 const getVoice = (id) => VOICES.find((v) => v.id === id) || VOICES[0];
 
 export async function preloadVoice(id, onProgress) {
@@ -161,7 +170,7 @@ function synthChunk(text, voice, state) {
       if (typeof window === 'undefined' || !window.speechSynthesis || !window.SpeechSynthesisUtterance) return resolve();
       const u = new window.SpeechSynthesisUtterance(text);
       u.lang = 'fr-FR';
-      u.rate = voice.rate;
+      u.rate = voice.rate * speechRate;
       u.pitch = voice.pitch;
       const fv = pickFrVoice();
       if (fv) u.voice = fv;
@@ -173,7 +182,7 @@ function synthChunk(text, voice, state) {
         clearTimeout(timer);
         resolve();
       };
-      timer = setTimeout(done, (text.length * 90) / (voice.rate || 1) + 2000);
+      timer = setTimeout(done, (text.length * 90) / ((voice.rate * speechRate) || 1) + 2000);
       u.onend = done;
       u.onerror = done;
       state.stop = done;
@@ -191,7 +200,7 @@ function splitSentences(text) {
 
 function generate(text, voice) {
   return Promise.resolve()
-    .then(() => synthesize(text, { speed: voice.speed }))
+    .then(() => synthesize(text, { speed: voice.speed * speechRate }))
     .catch(() => null);
 }
 

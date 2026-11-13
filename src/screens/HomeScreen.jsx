@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Modal, Pill, Toggle } from '../components/ui/index.js';
+import { VoiceSpeed } from './LobbyScreen.jsx';
 import RulesModal from './RulesModal.jsx';
 
 const iconBtn = 'flex h-11 w-11 items-center justify-center rounded-xl border-2 border-ink bg-white shadow-brutal font-display text-xl font-bold text-ink';
@@ -47,6 +48,7 @@ export default function HomeScreen({ freeCount, onPlay, onPacks, options, onOpti
       <Modal open={settings} onClose={() => setSettings(false)} title="Paramètres">
         <div className="flex flex-col gap-4">
           <ModeChoice name="home-mode" value={options.readerMode || 'voix'} onChange={(m) => onOptionsChange({ ...options, readerMode: m })} />
+          <VoiceSpeed options={options} onOptionsChange={onOptionsChange} />
           <Toggle checked={!!options.designationAuto} onChange={() => flip('designationAuto')} label="Désignation auto" />
           <Toggle checked={!!options.timerPression} onChange={() => flip('timerPression')} label="Timer pression (15s)" />
         </div>

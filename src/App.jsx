@@ -6,6 +6,7 @@ import ReaderTurnScreen from './screens/ReaderTurnScreen.jsx';
 import GamePlayScreen from './screens/GamePlayScreen.jsx';
 import EndGameScreen from './screens/EndGameScreen.jsx';
 import { VOICES, VOICE_BUNDLE, preloadVoice, speak, isVoiceReady } from './lib/speech.js';
+import * as speechLib from './lib/speech.js';
 import { STORIES, JOKERS, PACKS, THEMES } from './data/stories.js';
 import { prepareStory, nextReader, pickStory, pickThemes, countStories } from './game/engine.js';
 import {
@@ -17,6 +18,9 @@ export default function App() {
   const [screen, setScreen] = useState('home');
   const [players, setPlayers] = useState(() => loadPlayers());
   const [options, setOptions] = useState(() => loadOptions());
+  useEffect(() => {
+    try { speechLib.setSpeechRate(options.voiceSpeed ?? 1.2); } catch { /* ignore */ }
+  }, [options.voiceSpeed]);
   const [unlocked, setUnlocked] = useState(() => loadUnlockedPacks());
   const [ageConfirmed, setAgeConfirmed] = useState(() => loadAgeConfirmed());
   const [selectedPack, setSelectedPack] = useState('gratuit');

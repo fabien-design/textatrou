@@ -36,7 +36,7 @@ export function savePlayers(arr) {
 export function loadOptions() {
   const stored = read(KEYS.options, {});
   const obj = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
-  return { designationAuto: true, timerPression: false, readerMode: 'voix', voiceId: 'narrateur', ...obj };
+  return { designationAuto: true, timerPression: false, readerMode: 'voix', voiceId: 'narrateur', voiceSpeed: 1.2, ...obj };
 }
 
 export function saveOptions(partial) {
