@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.setTimeout(60000);
+test.use({ serviceWorkers: 'block' });
 
 const CONSIGNES = ['OBJET', 'NOMBRE', 'CÉLÉBRITÉ', 'ANIMAL', 'LIEU', 'ADJECTIF', 'VERBE', 'NOURRITURE', 'PARTIE DU CORPS', 'MÉTIER'];
 const NAMES = ['Alex', 'Sam', 'Léa'];
@@ -33,6 +34,7 @@ async function setup(page, { word = 'Saucisson' } = {}) {
   }, word);
   await page.route('**/*huggingface*/**', (r) => r.abort());
   await page.route('**/*.onnx*', (r) => r.abort());
+  for (const g of ['**/models/**', '**/ort/**', '**/espeak/**']) await page.route(g, (r) => r.abort());
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
