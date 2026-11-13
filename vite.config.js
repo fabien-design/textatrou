@@ -1,10 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  optimizeDeps: { exclude: ['@mintplex-labs/piper-tts-web'] },
   plugins: [
+    ...(mode === 'https' ? [basicSsl()] : []),
     react(),
     tailwindcss(),
     VitePWA({
@@ -32,4 +35,4 @@ export default defineConfig({
     setupFiles: ['./tests/setup.js'],
     include: ['tests/unit/**/*.test.{js,jsx}', 'tests/integration/**/*.test.{js,jsx}'],
   },
-});
+}));
