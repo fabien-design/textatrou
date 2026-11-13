@@ -1,9 +1,9 @@
 export const VOICES = [
-  { id: 'narrateur', emoji: '🎙️', name: 'Narrateur', price: null, model: 'fr_FR-siwis-medium', rate: 1, pitch: 1, effect: null },
-  { id: 'robot', emoji: '🤖', name: 'Robot', price: '0,99 €', model: 'fr_FR-tom-medium', rate: 1, pitch: 1, effect: 'robot' },
-  { id: 'ecureuil', emoji: '🐿️', name: 'Écureuil', price: '0,99 €', model: 'fr_FR-siwis-medium', rate: 1.35, pitch: 1.6, effect: 'chipmunk' },
-  { id: 'mamie', emoji: '👵', name: 'Mamie', price: '0,99 €', model: 'fr_FR-siwis-medium', rate: 0.85, pitch: 0.9, effect: 'tremolo' },
-  { id: 'commentateur', emoji: '🎤', name: 'Commentateur', price: '0,99 €', model: 'fr_FR-tom-medium', rate: 1.2, pitch: 1, effect: 'radio' },
+  { id: 'narrateur', emoji: '🎙️', name: 'Narrateur', price: null, engine: 'kokoro', model: 'kokoro', speed: 1.1, rate: 1, pitch: 1, effect: null },
+  { id: 'robot', emoji: '🤖', name: 'Robot', price: '0,99 €', engine: 'kokoro', model: 'kokoro', speed: 1.1, rate: 1, pitch: 1, effect: 'robot' },
+  { id: 'ecureuil', emoji: '🐿️', name: 'Écureuil', price: '0,99 €', engine: 'kokoro', model: 'kokoro', speed: 1.35, rate: 1.35, pitch: 1.6, effect: 'chipmunk' },
+  { id: 'mamie', emoji: '👵', name: 'Mamie', price: '0,99 €', engine: 'kokoro', model: 'kokoro', speed: 0.9, rate: 0.85, pitch: 0.9, effect: 'tremolo' },
+  { id: 'commentateur', emoji: '🎤', name: 'Commentateur', price: '0,99 €', engine: 'kokoro', model: 'kokoro', speed: 1.3, rate: 1.2, pitch: 1, effect: 'radio' },
 ];
 
 export const VOICE_BUNDLE = {
@@ -14,8 +14,8 @@ export const VOICE_BUNDLE = {
   includes: ['robot', 'ecureuil', 'mamie', 'commentateur'],
 };
 
-const ready = new Set(); // ready models
-let piperMod = null;
+import { loadKokoro, isKokoroReady, synthesize } from './kokoro.js';
+
 let audioCtx = null;
 const active = new Set(); // pending speak states
 let recog = null;
@@ -23,31 +23,20 @@ let recogDone = null;
 
 const getVoice = (id) => VOICES.find((v) => v.id === id) || VOICES[0];
 
-async function loadPiper() {
-  if (!piperMod) piperMod = await import('@mintplex-labs/piper-tts-web');
-  return piperMod;
-}
-
 export async function preloadVoice(id, onProgress) {
   try {
-    const v = getVoice(id);
-    const piper = await loadPiper();
-    await piper.download(v.model, (p) => {
-      try {
-        if (onProgress && p && p.total) onProgress(Math.min(1, p.loaded / p.total));
-      } catch { /* ignore */ }
+    const ok = await loadKokoro((p) => {
+      try { onProgress && onProgress(p); } catch { /* ignore */ }
     });
-    ready.add(v.model);
-    try { onProgress && onProgress(1); } catch { /* ignore */ }
-    return true;
+    return ok === true;
   } catch {
     return false;
   }
 }
 
-export function isVoiceReady(id) {
+export function isVoiceReady() {
   try {
-    return ready.has(getVoice(id).model);
+    return isKokoroReady() === true;
   } catch {
     return false;
   }
@@ -109,9 +98,10 @@ function buildChain(ctx, src, effect, nodes) {
   }
 }
 
-function playBlobWebAudio(blob, voice, state) {
+// Joue un Float32Array mono via Web Audio. Résout true si lu, false si impossible.
+function playAudio(audio, sampleRate, voice, state) {
   const ctx = getCtx();
-  if (!ctx) return null;
+  if (!ctx) return Promise.resolve(false);
   return new Promise((resolve) => {
     let finished = false;
     let timer = null;
@@ -136,11 +126,12 @@ function playBlobWebAudio(blob, voice, state) {
         ]);
         if (finished) return;
         if (ctx.state !== 'running') return done(false);
-        const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
-        if (finished) return;
+        const buf = ctx.createBuffer(1, audio.length, sampleRate);
+        if (buf.copyToChannel) buf.copyToChannel(audio, 0);
+        else buf.getChannelData(0).set(audio);
         src = ctx.createBufferSource();
         src.buffer = buf;
-        const rate = voice.rate * (voice.effect === 'chipmunk' ? voice.pitch : 1);
+        const rate = voice.effect === 'chipmunk' ? voice.pitch : 1;
         src.playbackRate.value = rate;
         buildChain(ctx, src, voice.effect, nodes);
         src.onended = () => done(true);
@@ -150,54 +141,6 @@ function playBlobWebAudio(blob, voice, state) {
         done(false);
       }
     })();
-  });
-}
-
-function playBlobAudioEl(blob, voice, state) {
-  if (typeof window === 'undefined' || !window.Audio) return null;
-  return new Promise((resolve) => {
-    let url = null;
-    let audio;
-    let finished = false;
-    let timer = null;
-    const done = (ok = true) => {
-      if (finished) return;
-      finished = true;
-      clearTimeout(timer);
-      try { url && URL.revokeObjectURL(url); } catch { /* ignore */ }
-      resolve(ok);
-    };
-    try {
-      url = URL.createObjectURL(blob);
-      audio = new Audio(url);
-      audio.preservesPitch = false;
-      audio.mozPreservesPitch = false;
-      audio.webkitPreservesPitch = false;
-      const rate = voice.rate * (voice.effect === 'chipmunk' ? voice.pitch : 1);
-      audio.playbackRate = rate;
-      audio.addEventListener('ended', () => done(true));
-      audio.onended = () => done(true);
-      const fail = () => {
-        try { audio.pause(); } catch { /* ignore */ }
-        done(false);
-      };
-      audio.onerror = fail;
-      audio.onstalled = fail;
-      audio.addEventListener('loadedmetadata', () => {
-        if (finished || !isFinite(audio.duration) || !audio.duration) return;
-        clearTimeout(timer);
-        timer = setTimeout(() => done(true), (audio.duration / rate + 1) * 1000);
-      });
-      timer = setTimeout(() => done(true), 30000);
-      state.stop = () => {
-        try { audio.pause(); } catch { /* ignore */ }
-        done(true);
-      };
-      const p = audio.play();
-      if (p && p.catch) p.catch(() => done(false));
-    } catch {
-      done(false);
-    }
   });
 }
 
@@ -241,28 +184,15 @@ function synthChunk(text, voice, state) {
   });
 }
 
-async function speakChunk(text, voice, state) {
-  if (ready.has(voice.model)) {
-    try {
-      const piper = await loadPiper();
-      const blob = await piper.predict({ text, voiceId: voice.model });
-      if (state.cancelled) return;
-      const w = playBlobWebAudio(blob, voice, state);
-      if (w && (await w)) return;
-      if (state.cancelled) return;
-      const el = playBlobAudioEl(blob, voice, state);
-      if (el && (await el)) return;
-    } catch {
-      if (state.cancelled) return;
-    }
-  }
-  if (state.cancelled) return;
-  await synthChunk(text, voice, state);
-}
-
 function splitSentences(text) {
   const parts = String(text).match(/[^.!?…]+[.!?…]*\s*/g) || [text];
   return parts.map((s) => s.trim()).filter(Boolean);
+}
+
+function generate(text, voice) {
+  return Promise.resolve()
+    .then(() => synthesize(text, { speed: voice.speed }))
+    .catch(() => null);
 }
 
 export async function speak(text, { voiceId } = {}) {
@@ -274,9 +204,26 @@ export async function speak(text, { voiceId } = {}) {
     active.add(state);
     try {
       const chunks = splitSentences(t);
+      const useKokoro = isVoiceReady();
+      // Pré-génère la phrase suivante pendant la lecture de la courante.
+      let pending = useKokoro ? generate(chunks[0], voice) : null;
       for (let i = 0; i < chunks.length && !state.cancelled; i++) {
-        await speakChunk(chunks[i], voice, state);
-        if (i < chunks.length - 1 && !state.cancelled) await new Promise((r) => setTimeout(r, 120));
+        let played = false;
+        if (pending) {
+          const res = await pending;
+          pending = null;
+          if (state.cancelled) break;
+          if (i + 1 < chunks.length) pending = generate(chunks[i + 1], voice);
+          if (res && res.audio && res.audio.length) {
+            played = await playAudio(res.audio, res.sampling_rate || 24000, voice, state);
+          }
+        }
+        if (state.cancelled) break;
+        if (!played) {
+          pending = null;
+          await synthChunk(chunks[i], voice, state);
+          if (useKokoro && i + 1 < chunks.length) pending = generate(chunks[i + 1], voice);
+        }
       }
     } finally {
       active.delete(state);

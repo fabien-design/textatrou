@@ -1,12 +1,33 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// Dev uniquement : sert /ort et /models bruts depuis public/ (Vite refuse d'importer des .mjs de public/).
+const servePublicRaw = () => ({
+  name: 'serve-public-raw',
+  configureServer(server) {
+    const types = { '.mjs': 'application/javascript', '.js': 'application/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream' };
+    server.middlewares.use((req, res, next) => {
+      const url = (req.url || '').split('?')[0];
+      if (!/^\/(ort|models|espeak)\//.test(url)) return next();
+      const file = path.join(server.config.publicDir, decodeURIComponent(url));
+      if (!file.startsWith(server.config.publicDir) || !fs.existsSync(file) || !fs.statSync(file).isFile()) return next();
+      res.setHeader('Content-Type', types[path.extname(file)] || 'application/octet-stream');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      fs.createReadStream(file).pipe(res);
+    });
+  },
+});
+
 export default defineConfig(({ mode }) => ({
-  optimizeDeps: { exclude: ['@mintplex-labs/piper-tts-web'] },
+  resolve: { alias: { phonemizer: path.resolve(process.cwd(), 'src/lib/g2p.js') } },
+  optimizeDeps: { exclude: ['@huggingface/transformers'] },
   plugins: [
+    servePublicRaw(),
     ...(mode === 'https' ? [basicSsl()] : []),
     react(),
     tailwindcss(),
@@ -15,12 +36,17 @@ export default defineConfig(({ mode }) => ({
       includeAssets: ['icon.svg'],
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,webmanifest}'],
-        globIgnores: ['**/*.wasm'],
+        globIgnores: ['**/*.wasm', 'models/**', 'ort/**', 'espeak/**'],
+        maximumFileSizeToCacheInBytes: 200 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => /\.wasm$/.test(url.pathname) || /huggingface\.co/.test(url.hostname),
+            urlPattern: ({ url }) => /\/models\//.test(url.pathname) || /\/ort\//.test(url.pathname) || /\/espeak\//.test(url.pathname),
             handler: 'CacheFirst',
-            options: { cacheName: 'textatrou-voices', cacheableResponse: { statuses: [0, 200] } },
+            options: {
+              cacheName: 'textatrou-voice',
+              expiration: { maxEntries: 20 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
           },
         ],
       },

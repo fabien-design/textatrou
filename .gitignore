@@ -6,3 +6,6 @@ playwright-report/
 .vite/
 *.log
 dev-dist/
+public/models/
+public/ort/
+public/espeak/
