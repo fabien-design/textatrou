@@ -24,7 +24,7 @@ export default function HomeScreen({ freeCount, onPlay, onPacks, options, onOpti
   const [settings, setSettings] = useState(false);
   const flip = (key) => onOptionsChange({ ...options, [key]: !options[key] });
   return (
-    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-hidden">
+    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-clip">
       <div className="flex justify-between">
         <button type="button" aria-label="Règles" className={iconBtn} onClick={() => setRules(true)}>?</button>
         <button type="button" aria-label="Paramètres" className={iconBtn} onClick={() => setSettings(true)}>⚙</button>

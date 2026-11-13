@@ -165,7 +165,7 @@ export default function App() {
   }
 
   return (
-    <div className="max-w-md mx-auto min-h-screen bg-cream text-ink font-body relative overflow-x-hidden">
+    <div className="max-w-md mx-auto min-h-screen bg-cream text-ink font-body relative overflow-x-clip">
       <style>{`@keyframes screenIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.screen-in{animation:screenIn .25s ease-out}`}</style>
       <div key={screen} className="screen-in">{content}</div>
     </div>

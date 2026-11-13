@@ -31,7 +31,7 @@ export default function LobbyScreen({ voices = [], unlockedVoices = ['narrateur'
   const missing = 3 - players.length;
   const flip = (key) => onOptionsChange({ ...options, [key]: !options[key] });
   return (
-    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-hidden">
+    <div className="min-h-dvh flex flex-col px-4 py-6 gap-5 overflow-x-clip">
       <div className="flex items-center gap-3">
         <Button variant="white" className="px-3 py-2 text-sm" onClick={onBack}>‹ Retour</Button>
         <h1 className="font-display text-2xl font-bold text-ink">CONFIGURATION</h1>
